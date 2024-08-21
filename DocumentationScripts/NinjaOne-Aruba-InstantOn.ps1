@@ -10,6 +10,9 @@ $ArubaInstantOnPass = Ninja-Property-Get arubaInstantOnPassword
 $NinjaTemplateNameSite = "Aruba Instant On - Site"
 $NinjaTemplateNameDevice = "Aruba Instant On - Device"
 
+[System.Collections.Generic.List[PSCustomObject]]$MyDeviceDocs = @()
+$ninjaSerialNumbers = @()
+
 function Get-ColorBasedOnStatus {
     param($status, $speed)
     switch ($status) {
@@ -241,7 +244,12 @@ try {
     
     $SiteDocTemplate = Invoke-NinjaOneDocumentTemplate $SiteLayoutFields
     $SiteDocs = Invoke-NinjaOneRequest -Method GET -Path 'organization/documents' -QueryParams "templateIds=$($SiteDocTemplate.id)"
-		
+	
+    $elementCount = $SiteDocs.Count
+    Write-Host "Number of Docs $($NinjaTemplateNameSite): $($elementCount)"	
+    foreach ($sited in $SiteDocs) {
+        #Write-Host "Site DocId: $($sited.documentId) - $($sited.documentName)"
+    }
 
     $DeviceLayoutFields = [PSCustomObject]@{
         name          = $NinjaTemplateNameDevice
@@ -361,6 +369,15 @@ try {
 	
     $DeviceDocTemplate = Invoke-NinjaOneDocumentTemplate $DeviceLayoutFields
     $DeviceDocs = Invoke-NinjaOneRequest -Method GET -Path 'organization/documents' -QueryParams "templateIds=$($DeviceDocTemplate.id)"
+    $MyDeviceDocs = $DeviceDocs
+    #$MyDeviceDocs | Format-List *
+    $elementCount = $DeviceDocs.Count
+    Write-Host "Number of Docs $($NinjaTemplateNameDevice): $($elementCount)"	
+    #foreach ($deviced in $DeviceDocs) {
+        #Write-Host $deviced
+        #$deviced | Format-List *
+        #Write-Host "Device DocId: $($deviced.documentId) - $($deviced.documentName)" # [SN: $($deviced.fields.serialNumber)]"
+    #}
 
 
     # Generate the Code Verified and Code Challange used in OAUth
@@ -443,9 +460,19 @@ try {
 
     # Loop through each site and create documentation
     foreach ($site in $sites.Elements) {
+
+    ########################################################
+            #velocizzo l'attività di debug usando un unico site!
+            ########################################################
+            #if ($site.name -ne "RUGBY ROVIGO") {
+            #    continue
+            #}
+            ########################################################
+
         #First we will see if there is an Asset that matches the site name with this Asset Layout
         Write-Host "Attempting to map $($Site.name)"
         $MatchedSiteDoc = $SiteDocs | Where-Object { $_.documentName -eq $Site.name }
+
         if (!$MatchedSiteDoc) {
             #Check on Org name
             $Org = ($NinjaOneOrgs | Where-Object { $_.name -eq $Site.name }).id
@@ -453,10 +480,12 @@ try {
                 Write-Output "An Organization in NinjaOne could not be matched to the site. Please create a blank '$NinjaTemplateNameSite' asset, with a name of `"$($Site.name)`" under the Organization in NinjaOne you wish to map this site to."
                 continue
             }
+
         } else {
             $Org = $MatchedSiteDoc.organizationId
+            #Write-Host "Found OrgID: $($MatchedSiteDoc.organizationId)"
         }
-        Write-Host "Processing $($Site.name)"
+        Write-Host "Found OrgID: $($MatchedSiteDoc.organizationId) - Processing $($Site.name)"
 
         #Gather all Data
         #Site Details
@@ -513,20 +542,20 @@ try {
                 Value       = '<i class="fa-solid fa-network-wired fa-2xs"></i>' + " $($LandingPage.wiredClientsCount) | $($LandingPage.wirelessClientsCount) " + '<i class="fas fa-wifi fa-2xs"></i>'
                 Description = 'Connected Clients'
                 Colour      = '#337AB7'
-                Link        = "https://portal.arubainstanton.com/#/site/$($Site.id)/home/view/clients"
+                Link        = "https://portal.arubainstanton.com/sites/$($Site.id)/clients/overview"
             })
         $WidgetData.add([PSCustomObject]@{
                 Value       = "$($LandingPage.currentlyActiveWiredNetworksCount) / $($LandingPage.configuredWiredNetworksCount)"
                 Description = 'Active Wired Networks'
                 Colour      = '#337AB7'
-                Link        = "https://portal.arubainstanton.com/#/site/$($Site.id)/home/view/networks"
+                Link        = "https://portal.arubainstanton.com/sites/$($Site.id)/networks/overview"
             })
 
         $WidgetData.add([PSCustomObject]@{
                 Value       = "$($LandingPage.currentlyActiveWirelessNetworksCount) / $($LandingPage.configuredWirelessNetworksCount)"
                 Description = 'Active Wireless Networks'
                 Colour      = '#337AB7'
-                Link        = "https://portal.arubainstanton.com/#/site/$($Site.id)/home/view/networks"
+                Link        = "https://portal.arubainstanton.com/sites/$($Site.id)/networks/overview"
             })
 
         if ( $LandingPage.health -eq 'good') {
@@ -540,19 +569,25 @@ try {
                 Value       = $HealthStatus
                 Description = 'Health'
                 Colour      = $HealthCol
-                Link        = "https://portal.arubainstanton.com/#/site/$($Site.id)/home/view/health"
+                Link        = "https://portal.arubainstanton.com/sites/$($Site.id)/health/overview"
             })
         $WidgetData.add([PSCustomObject]@{
                 Value       = "$([math]::round(($LandingPage.totalDataTransferredDuringLast24HoursInBytes / 1024 / 1024 / 1024), 2)) GB"
                 Description = 'Data Transfer (24 Hours)'
                 Colour      = '#337AB7'
-                Link        = "https://portal.arubainstanton.com/#/site/$($Site.id)/home/view/applications"
+                Link        = "https://portal.arubainstanton.com/sites/$($Site.id)/applications/overview"
             })
         $WidgetData.add([PSCustomObject]@{
                 Value       = '<i class="fas fas fa-globe"></i>'
                 Description = 'View Portal'
                 Colour      = '#337AB7'
-                Link        = "https://portal.arubainstanton.com/#/site/$($Site.ID)/home/dashboard"
+                Link        = "https://portal.arubainstanton.com/sites/$($Site.ID)/overview"
+            })
+        $WidgetData.add([PSCustomObject]@{
+                Value       = '<i class="fas fas fa-network-wired"></i>'
+                Description = 'Topology'
+                Colour      = '#337AB7'
+                Link        = "https://portal.arubainstanton.com/sites/$($Site.ID)/devices/topology"
             })
 
         $SiteDetailsWidgetsHTML = Get-NinjaOneWidgetCard -Data $WidgetData -Icon 'fas fa-building' -SmallCols 2 -MedCols 3 -LargeCols 4 -XLCols 4 -NoCard
@@ -646,9 +681,11 @@ try {
     
                 $DeviceClients = $ClientSummary.elements | Where-Object { $_.apName -eq $device.name }
                 $DeviceClientsHTML = ($DeviceClients | Select-Object @{n = 'Name'; e = { $_.name } }, @{n = 'Network'; e = { $_.NetworkSsid } }, @{n = 'IP Address'; e = { $_.ipAddress } }, @{n = 'AP'; e = { $_.apName } }, @{n = 'Protocol'; e = { $_.wirelessProtocol } }, @{n = 'Security'; e = { $_.wirelessSecurity } }, @{n = 'Connected (Hours)'; e = { [math]::Round(($_.connectionDurationInSeconds / 60 / 60), 2) } }, @{n = 'Signal Quality'; e = { $_.signalQuality } }, @{n = 'Signal'; e = { $_.signalInDbm } }, @{n = 'Noise'; e = { $_.noiseInDbm } }, @{n = 'SNR'; e = { $_.snrInDb } } | ConvertTo-Html -fragment | Out-String)
-
+                
+                #Write-Host "  Find device: $($device.model) - $($device.serialNumber)"
+                
                 $ManagementLink =@"
- <ul class="row unstyled"><li class="col-sm-6 col-md-4 col-lg-4 col-xl-4"><a href="https://portal.arubainstanton.com/#/site/$($Site.ID)/home/view/inventory/devices" target="_blank" rel="nofollow noopener noreferrer"><span><i class="fas fa-globe"></i>&nbsp;&nbsp;</span><span style="text-align: center;">View in Portal</span></a></li></ul>
+ <ul class="row unstyled"><li class="col-sm-6 col-md-4 col-lg-4 col-xl-4"><a href="https://portal.arubainstanton.com/sites/$($Site.ID)/devices/$($device.macAddress)/device/overview" target="_blank" rel="nofollow noopener noreferrer"><span><i class="fas fa-globe"></i>&nbsp;&nbsp;</span><span style="text-align: center;">View in Portal</span></a></li></ul>
 "@
 
                 $DeviceFields = @{
@@ -665,25 +702,41 @@ try {
                     'clients'       = @{ 'html' = $DeviceClientsHTML }
                 }
 
-                $MatchedDeviceDoc = $DeviceDocs | Where-Object { $_.documentName -eq $device.name }
+                #$MatchedDeviceDoc = $DeviceDocs | Where-Object { $_.documentName -eq $device.name }
+                #Se in più organizzazioni ci sono dispositivi con lo stesso nome non funziona correttamente.
+                #Utilizzo il serialnumber del dispositivo per avere un codice univoco.
+                
+                #$MatchedDeviceDoc = $DeviceDocs | Where-Object { $_.fields.serialNumber -eq $device.serialNumber }
+
+                # Trova il documento corrispondente in $DeviceDocs
+                $MatchedDeviceDoc = $DeviceDocs | Where-Object {
+                    # Cerca il serialNumber all'interno dell'array fields
+                    $serialField = $_.fields | Where-Object { $_.name -eq "serialNumber" }
+    
+                    # Confronta il valore del serialNumber trovato con quello in $device
+                    $serialField.value -eq $device.serialNumber
+                }
 
                 if ($MatchedDeviceDoc) {
                     $UpdateObject = [PSCustomObject]@{
                         documentId   = $MatchedDeviceDoc.documentId
-                        documentName = $device.name
+                        documentName = "$($Site.name) - $($device.name) ($($device.serialNumber))"
                         fields       = $DeviceFields
                     }
-    
+                    #Write-Host "Verifico il dispositivo SN: $($device.serialNumber) - $($UpdateObject.documentName) da aggiornare"
+                    #aggiungo un seriale alla lista dei seriali trovati
+                    $ninjaSerialNumbers += $DeviceFields.serialNumber
+
                     $NinjaDocUpdates.Add($UpdateObject)
     
                 } else {
                     $CreateObject = [PSCustomObject]@{
-                        documentName       = $device.name
+                        documentName       = "$($Site.name) - $($device.name) ($($device.serialNumber))"
                         documentTemplateId = $DeviceDocTemplate.id
                         organizationId     = [int]$Org
                         fields             = $DeviceFields
                     }
-    
+                    #Write-Host "Verifico il dispositivo SN: $($device.serialNumber) - $($CreateObject.documentName) da creare"
                     $NinjaDocCreation.Add($CreateObject)
                 }
 
@@ -692,10 +745,61 @@ try {
        
     }
 
+
+try { 
+    # Rimuovi eventuali valori nulli o vuoti
+    $ninjaSerialNumbers = $ninjaSerialNumbers | Where-Object { $_ -ne $null -and $_ -ne "" }
+    #Write-Host "Serial Numbers in NinjaDocUpdates: $($ninjaSerialNumbers -join ', ')"
+
+    foreach ($deviceDoc in $MyDeviceDocs) {
+        # Debug: Visualizza il documento corrente
+        #Write-Host "Documento in MyDeviceDocs ID: $($deviceDoc.documentId)"
+        
+        # Cerca il campo serialNumber all'interno dell'array fields
+        $serialField = $deviceDoc.fields | Where-Object { $_.name -eq "serialNumber" }
+
+        # Debug: Mostra tutti i campi del documento
+        #Write-Host "Campi del documento: $($deviceDoc.fields | Format-Table -AutoSize | Out-String)"
+
+        # Verifica se il campo serialNumber è presente e se il suo valore è $null o vuoto
+        if ([string]::IsNullOrEmpty($serialField.value)) {
+            Write-Host "Il campo 'serialNumber' è presente ma vuoto nel documento ID: $($deviceDoc.documentId). Procedo con la cancellazione."
+
+            try {
+                $Execute = Invoke-NinjaOneRequest -Path "organization/document/$($deviceDoc.documentId)" -Method DELETE
+                Write-Host "Documento ID: $($deviceDoc.documentId) cancellato con successo."
+            } catch {
+                Write-Host "Errore durante la cancellazione del documento ID: $($deviceDoc.documentId): $_"
+            }
+        } else {
+            $serialNumber = $serialField.value
+            #Write-Host "Valore serialNumber trovato: $($serialNumber)"
+
+            # Verifica se il serialNumber esiste in $ninjaSerialNumbers
+            if (-not ($ninjaSerialNumbers -contains $serialNumber)) {
+                Write-Host "Il serialNumber '$($serialNumber)' non è presente in Aruba. Procedo con la cancellazione del documento ID: $($deviceDoc.documentId)."
+
+                try {
+                    $Execute = Invoke-NinjaOneRequest -Path "organization/document/$($deviceDoc.documentId)" -Method DELETE
+                    Write-Host "Documento ID: $($deviceDoc.documentId) cancellato con successo."
+                } catch {
+                    Write-Host "Errore durante la cancellazione del documento ID: $($deviceDoc.documentId): $_"
+                }
+            }
+        }
+    }
+} catch {
+    Write-Host "Errore durante l'esecuzione del ciclo: $_"
+}
+
+
+
+
     try {
         # Create New Documents
         if (($NinjaDocCreation | Measure-Object).count -ge 1) {
-            Write-Host "Creating Documents"
+            $elementCount = $NinjaDocCreation.Count
+            Write-Host "Creating Documents: $($elementCount) "	
             $CreatedDocs = Invoke-NinjaOneRequest -Path "organization/documents" -Method POST -InputObject $NinjaDocCreation -AsArray
             Write-Host "Created $(($CreatedDocs | Measure-Object).count) Documents"
         }
@@ -706,7 +810,8 @@ try {
     try {
         # Update Documents
         if (($NinjaDocUpdates | Measure-Object).count -ge 1) {
-            Write-Host "Updating Documents"
+            $elementCount = $NinjaDocUpdates.Count
+            Write-Host "Updating Documents: $($elementCount)"	
             $UpdatedDocs = Invoke-NinjaOneRequest -Path "organization/documents" -Method PATCH -InputObject $NinjaDocUpdates -AsArray
             Write-Host "Updated $(($UpdatedDocs | Measure-Object).count) Documents"
         }
@@ -756,3 +861,4 @@ try {
     Write-Output "Failed to Generate Documentation. Linenumber: $($_.InvocationInfo.ScriptLineNumber) Error: $($_.Exception.message)"
     Exit 1
 }
+
